@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -6,6 +5,7 @@ import StudioSidebar from "./StudioSidebar";
 import FloatingPanel from "./FloatingPanel";
 import MainCanvas from "./MainCanvas";
 import { Upload } from "lucide-react";
+import ScannerEffect from "./ScannerEffect";
 
 // Mock Assets
 const BACKGROUNDS = [
@@ -18,7 +18,9 @@ const BACKGROUNDS = [
 export default function StudioLayout() {
     const [activeTab, setActiveTab] = useState(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isScanning, setIsScanning] = useState(false); // New state
     const [generatedImage, setGeneratedImage] = useState(null);
+    const [detectedTags, setDetectedTags] = useState(null); // New state for tags
 
     const [state, setState] = useState({
         background: null,
@@ -28,6 +30,45 @@ export default function StudioLayout() {
     });
 
     const updateState = (key, value) => setState(prev => ({ ...prev, [key]: value }));
+
+    const handleImageUpload = async (file) => {
+        // 1. Show Preview
+        const preview = URL.createObjectURL(file);
+        updateState('images', [{ file, preview }]);
+
+        // 2. Start Scanning
+        setIsScanning(true);
+        setActiveTab(null); // Close panel to show scan
+
+        try {
+            // Convert to Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = async () => {
+                const base64 = reader.result;
+
+                // 3. Call API
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: JSON.stringify({ image: base64 })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    setDetectedTags(data.data);
+                    // Auto-fill instructions
+                    const autoDesc = `${data.data.color} ${data.data.material} ${data.data.type}, ${data.data.style} style`;
+                    updateState('instructions', autoDesc);
+                }
+
+                // 4. Stop Scanning
+                setTimeout(() => setIsScanning(false), 1500); // Min 1.5s scan time for effect
+            };
+        } catch (e) {
+            console.error("Scan failed", e);
+            setIsScanning(false);
+        }
+    };
 
     const handleGenerate = async () => {
         if (state.images.length === 0) {
@@ -62,6 +103,9 @@ export default function StudioLayout() {
 
     return (
         <div className="relative w-full h-screen overflow-hidden bg-[#050510] font-sans text-right" dir="rtl">
+
+            {/* Scanner Overlay */}
+            <ScannerEffect isScanning={isScanning} />
 
             {/* Main Workspace */}
             <MainCanvas
@@ -144,9 +188,7 @@ export default function StudioLayout() {
                         className="absolute inset-0 opacity-0 cursor-pointer z-10"
                         onChange={(e) => {
                             const file = e.target.files[0];
-                            if (file) {
-                                updateState('images', [{ file, preview: URL.createObjectURL(file) }]);
-                            }
+                            if (file) handleImageUpload(file);
                         }}
                     />
                     <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-primary">
@@ -159,6 +201,17 @@ export default function StudioLayout() {
                     <div className="mt-4 p-2 bg-slate-800/50 rounded-lg flex items-center gap-3">
                         <img src={state.images[0].preview} className="w-12 h-12 rounded-md object-cover" alt="preview" />
                         <span className="text-xs text-slate-300 truncate flex-1">{state.images[0].file.name}</span>
+                    </div>
+                )}
+
+                {/* Show Detected Tags */}
+                {detectedTags && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {Object.values(detectedTags).filter(Boolean).map((tag, i) => (
+                            <span key={i} className="px-2 py-1 bg-secondary/20 text-secondary text-xs rounded-full border border-secondary/50">
+                                {tag}
+                            </span>
+                        ))}
                     </div>
                 )}
             </FloatingPanel>

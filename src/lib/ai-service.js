@@ -95,3 +95,41 @@ export async function generateImageNanoBanana(refinedPrompt) {
         return "https://placehold.co/1024x1024/png?text=Imagen+Error+Check+Console";
     }
 }
+
+/**
+ * Analyzes an image using Gemini 1.5 Flash to extract fashion details.
+ * @param {string} imageBase64 - Base64 string of the image.
+ * @returns {Promise<Object>} - Extracted tags (color, type, material, style).
+ */
+export async function analyzeImage(imageBase64) {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const prompt = `
+      Analyze this fashion image. Identify the following details:
+      1. Garment Type (e.g., Dress, Shirt, Pants)
+      2. Color
+      3. Material (visual estimation, e.g., Silk, Denim)
+      4. Style (e.g., Casual, Evening, Business)
+      
+      Return ONLY a JSON object with keys: type, color, material, style.
+      Do not add markdown formatting.
+    `;
+
+        const imagePart = {
+            inlineData: {
+                data: imageBase64,
+                mimeType: "image/jpeg",
+            },
+        };
+
+        const result = await model.generateContent([prompt, imagePart]);
+        const response = await result.response;
+        const text = response.text().replace(/```json|```/g, "").trim();
+
+        return JSON.parse(text);
+    } catch (error) {
+        console.error("Smart Vision Error:", error);
+        return { type: "", color: "", material: "", style: "" }; // Fallback
+    }
+}
